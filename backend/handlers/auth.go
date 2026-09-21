@@ -3,16 +3,16 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"mockwallet/auth"
 	"mockwallet/db"
+	"mockwallet/middleware"
 	"mockwallet/models"
 	"net/http"
-	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
-func createUser(w http.ResponseWriter, r *http.Request) {
+func CreateUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method is not allowed", http.StatusMethodNotAllowed)
 		return
@@ -40,14 +40,14 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := generateToken(u.ID)
+	token, err := auth.GenerateToken(u.ID)
 
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
-	response := RegisterResponse{
+	response := models.RegisterResponse{
 		ID:       u.ID,
 		Token:    token,
 		Username: u.Username,
@@ -59,7 +59,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func checkUser(w http.ResponseWriter, r *http.Request) {
+func CheckUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method is not allowed", http.StatusMethodNotAllowed)
 		return
@@ -92,7 +92,7 @@ func checkUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := generateToken(dbID)
+	token, err := auth.GenerateToken(dbID)
 	if err != nil {
 		http.Error(w, "Ошибка генерации токена", http.StatusInternalServerError)
 		return
@@ -108,15 +108,15 @@ func checkUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func getUser(w http.ResponseWriter, r *http.Request) {
+func GetUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method is not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	userID := r.Context().Value(userIDKey).(int)
+	userID := r.Context().Value(middleware.UserIDKey).(int)
 
-	var u User
+	var u models.User
 
 	err := db.GetDB().QueryRow("SELECT username, email FROM users WHERE id = $1", userID).Scan(&u.Username, &u.Email)
 	if err != nil {
@@ -126,39 +126,4 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(u)
-}
-
-func generateToken(userID int) (string, error) {
-	claims := jwt.MapClaims{
-		"user_id": userID,
-		"exp":     time.Now().Add(7 * 24 * time.Hour).Unix(), // Срок действия — неделя
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(secretKey)
-}
-
-func validateToken(tokenStr string) (int, error) {
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return secretKey, nil
-	})
-
-	if err != nil || !token.Valid {
-		return 0, fmt.Errorf("invalid token")
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return 0, fmt.Errorf("invalid claims")
-	}
-
-	userIDFloat, ok := claims["user_id"].(float64)
-	if !ok {
-		return 0, fmt.Errorf("user_id not found in token")
-	}
-
-	return int(userIDFloat), nil
 }
