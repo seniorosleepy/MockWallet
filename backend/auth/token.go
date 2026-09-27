@@ -12,7 +12,7 @@ var SecretKey []byte
 func GenerateToken(userID int) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
-		"exp":     time.Now().Add(7 * 24 * time.Hour).Unix(), // Срок действия — неделя
+		"exp":     time.Now().Add(7 * 24 * time.Hour).Unix(), // Validity period - a week
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
